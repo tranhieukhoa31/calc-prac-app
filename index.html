@@ -455,7 +455,7 @@ const TOPIC_GRAPH = {"algebra_functions": {"label": "Algebra & functions", "prer
 
 // After deploying to Railway, replace this with your Railway URL.
 // e.g. 'https://calculus-practice-production.up.railway.app'
-const SERVER_URL = 'https://web-production-c392a.up.railway.app';
+const SERVER_URL = 'http://localhost:5000';
 
 const TOPIC_LABELS = {};
 Object.entries(TOPIC_GRAPH).forEach(([k, v]) => TOPIC_LABELS[k] = v.label);
@@ -818,13 +818,41 @@ function toggleAnswer() {
   renderAllMath();
 }
 
+// ── Resolve student ID: typed name, or sequential guest ID ─────────────────
+let cachedGuestId = null;
+
+async function resolveStudentId() {
+  const typed = document.getElementById('studentId').value.trim();
+  if (typed) return typed;
+
+  // Reuse the guest ID already assigned this session
+  if (cachedGuestId) return cachedGuestId;
+
+  try {
+    const res = await fetch(`${SERVER_URL}/next-guest-id`);
+    if (res.ok) {
+      const data = await res.json();
+      cachedGuestId = data.guest_id;
+      // Reflect it in the input so the student can see their assigned ID
+      const input = document.getElementById('studentId');
+      if (input) input.placeholder = `e.g. Alice (you are ${cachedGuestId})`;
+      return cachedGuestId;
+    }
+  } catch (err) {
+    // Server offline — fall back to a local guest label
+  }
+
+  cachedGuestId = 'guest_offline';
+  return cachedGuestId;
+}
+
 // ── Record attempt & POST ─────────────────────────────────────────────────
 async function recordAttempt(correct) {
   if (!currentProblem || answered) return;
   stopTimer();
   answered = true;
 
-  const studentId = document.getElementById('studentId').value.trim() || 'anonymous';
+  const studentId = await resolveStudentId();
   const record = {
     student_id:   studentId,
     problem_id:   currentProblem.problem_id,
