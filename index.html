@@ -210,13 +210,11 @@ body {
   margin-bottom: 24px;
   min-height: 40px;
 }
-.problem-statement > div {
+.problem-statement > span {
   white-space: normal;
-  word-wrap: break-word;
 }
 .problem-statement mjx-container {
-  display: inline-block !important;
-  margin: 0 3px !important;
+  display: inline !important;
 }
 
 .timer {
@@ -514,10 +512,11 @@ function renderMixedContent(container, tex) {
   function appendMathSegment(segment) {
     const trimmed = segment.trim();
     if (!trimmed) return;
+    wrapper.appendChild(document.createTextNode(' '));
     const node = latexToNode(trimmed, false);
-    node.style.display = 'inline-block';
-    node.style.verticalAlign = 'middle';
+    node.style.display = 'inline';
     wrapper.appendChild(node);
+    wrapper.appendChild(document.createTextNode(' '));
   }
 
   while ((match = regex.exec(tex)) !== null) {
@@ -525,11 +524,13 @@ function renderMixedContent(container, tex) {
     const before = tex.slice(lastIndex, match.index);
     if (before.trim()) appendMathSegment(before);
 
-    // The text itself — plain wrappable HTML
-    const textSpan = document.createElement('span');
-    textSpan.textContent = match[1];
-    textSpan.style.fontFamily = "'Lora', serif";
-    wrapper.appendChild(textSpan);
+    // The text itself — plain wrappable HTML, split into words so the
+    // browser can break anywhere a normal space exists
+    const words = match[1].split(/(\s+)/);
+    words.forEach(w => {
+      if (w === '') return;
+      wrapper.appendChild(document.createTextNode(w));
+    });
 
     lastIndex = regex.lastIndex;
   }
