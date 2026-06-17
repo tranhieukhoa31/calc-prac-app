@@ -210,21 +210,13 @@ body {
   margin-bottom: 24px;
   min-height: 40px;
 }
+.problem-statement > div {
+  white-space: normal;
+  word-wrap: break-word;
+}
 .problem-statement mjx-container {
-  display: inline !important;
-  white-space: normal !important;
-  overflow-wrap: break-word !important;
-  word-break: break-word !important;
-}
-/* Force MathJax text spans to wrap */
-.problem-statement mjx-container svg {
-  max-width: 100% !important;
-  height: auto !important;
-}
-.problem-statement mjx-utext,
-.problem-statement mjx-mtext {
-  white-space: normal !important;
-  overflow-wrap: break-word !important;
+  display: inline-block !important;
+  margin: 0 3px !important;
 }
 
 .timer {
@@ -455,7 +447,7 @@ const TOPIC_GRAPH = {"algebra_functions": {"label": "Algebra & functions", "prer
 
 // After deploying to Railway, replace this with your Railway URL.
 // e.g. 'https://calculus-practice-production.up.railway.app'
-const SERVER_URL = 'https://web-production-c392a.up.railway.app';
+const SERVER_URL = 'http://localhost:5000';
 
 const TOPIC_LABELS = {};
 Object.entries(TOPIC_GRAPH).forEach(([k, v]) => TOPIC_LABELS[k] = v.label);
@@ -502,6 +494,51 @@ function renderLatex(containerId, tex, display) {
   if (!el) return;
   el.innerHTML = '';
   el.appendChild(latexToNode(tex, display));
+}
+
+// ── Wrappable renderer: splits \text{...} into plain HTML text so it can
+// line-wrap normally, and renders surrounding math symbols as small inline
+// MathJax nodes. This fixes long sentences getting clipped on narrow screens,
+// since a single MathJax SVG block cannot wrap internally.
+function renderMixedContent(container, tex) {
+  container.innerHTML = '';
+  container.style.display = 'block';
+
+  // Split on \text{...} blocks, capturing the text inside
+  const regex = /\\text\{([^}]*)\}/g;
+  let lastIndex = 0;
+  let match;
+  const wrapper = document.createElement('span');
+  wrapper.style.display = 'inline';
+
+  function appendMathSegment(segment) {
+    const trimmed = segment.trim();
+    if (!trimmed) return;
+    const node = latexToNode(trimmed, false);
+    node.style.display = 'inline-block';
+    node.style.verticalAlign = 'middle';
+    wrapper.appendChild(node);
+  }
+
+  while ((match = regex.exec(tex)) !== null) {
+    // Math segment before this \text{...} block
+    const before = tex.slice(lastIndex, match.index);
+    if (before.trim()) appendMathSegment(before);
+
+    // The text itself — plain wrappable HTML
+    const textSpan = document.createElement('span');
+    textSpan.textContent = match[1];
+    textSpan.style.fontFamily = "'Lora', serif";
+    wrapper.appendChild(textSpan);
+
+    lastIndex = regex.lastIndex;
+  }
+
+  // Trailing math segment after the last \text{...}
+  const tail = tex.slice(lastIndex);
+  if (tail.trim()) appendMathSegment(tail);
+
+  container.appendChild(wrapper);
 }
 
 // ── Mobile sidebar toggle ─────────────────────────────────────────────────
@@ -701,7 +738,7 @@ function renderAllMath() {
       const lineDiv = document.createElement('div');
       lineDiv.style.marginBottom = lines.length > 1 && i < lines.length - 1 ? '6px' : '0';
       if (line.trim()) {
-        lineDiv.appendChild(latexToNode(line.trim(), false));
+        renderMixedContent(lineDiv, line.trim());
       }
       stmtEl.appendChild(lineDiv);
     });
