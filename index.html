@@ -444,7 +444,9 @@ const PROBLEMS    = [{"problem_id": "calc_deriv_001", "topic": "derivatives_basi
 const TOPIC_GRAPH = {"algebra_functions": {"label": "Algebra & functions", "prerequisites": []}, "trigonometry": {"label": "Trigonometry", "prerequisites": []}, "derivatives_basics": {"label": "Derivatives (power rule)", "prerequisites": ["algebra_functions"]}, "product_quotient_rule": {"label": "Product & quotient rule", "prerequisites": ["derivatives_basics"]}, "chain_rule": {"label": "Chain rule", "prerequisites": ["derivatives_basics"]}, "trig_derivatives": {"label": "Trig derivatives", "prerequisites": ["derivatives_basics", "trigonometry"]}, "log_derivatives": {"label": "Logarithmic derivatives", "prerequisites": ["derivatives_basics"]}, "optimisation": {"label": "Optimisation", "prerequisites": ["product_quotient_rule", "chain_rule"]}, "rates_of_change": {"label": "Rates of change", "prerequisites": ["trig_derivatives", "chain_rule"]}, "integration_basics": {"label": "Integration (power rule)", "prerequisites": ["derivatives_basics"]}, "trig_integration": {"label": "Trig integration", "prerequisites": ["integration_basics", "trig_derivatives"]}, "log_integration": {"label": "Logarithmic integration", "prerequisites": ["integration_basics", "log_derivatives"]}, "substitution_method": {"label": "Substitution method", "prerequisites": ["integration_basics", "chain_rule"]}, "definite_integrals": {"label": "Definite integrals & area", "prerequisites": ["integration_basics"]}};
 
 
-const SERVER_URL = 'https://web-production-c392a.up.railway.app';
+const SERVER_URL = 'https://tranhieukhoa.pythonanywhere.com/';
+
+<!-- old url: 'https://web-production-c392a.up.railway.app'-->
 
 const TOPIC_LABELS = {};
 Object.entries(TOPIC_GRAPH).forEach(([k, v]) => TOPIC_LABELS[k] = v.label);
