@@ -873,10 +873,7 @@ const STORAGE_KEY = 'calc_practice_student_id';
 function normalizeName(raw) {
   const trimmed = raw.trim().replace(/\s+/g, ' ');
   if (!trimmed) return '';
-  return trimmed
-    .split(' ')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ');
+  return trimmed.toLowerCase();
 }
 
 async function resolveStudentId() {
