@@ -411,6 +411,9 @@ body {
     <div class="student-bar">
       <label for="studentId">Name or ID</label>
       <input type="text" id="studentId" placeholder="e.g. Alice">
+      <div id="switchIdentityRow" style="margin-top:4px;font-size:10px;color:var(--ink3);display:none;">
+        Not you? <a href="#" id="switchIdentityLink" style="color:var(--accent);text-decoration:none;">Switch</a>
+      </div>
     </div>
 
     <div class="sidebar-section">Topic</div>
@@ -858,32 +861,71 @@ function toggleAnswer() {
   renderAllMath();
 }
 
-// ── Resolve student ID: typed name, or sequential guest ID ─────────────────
-let cachedGuestId = null;
+// ── Persistent student identity ─────────────────────────────────────────────
+// Saved to localStorage so the same student is recognised across sessions —
+// closing the tab and coming back later, or practicing over several days,
+// still counts as one person rather than a fresh guest each time.
+const STORAGE_KEY = 'calc_practice_student_id';
+
+// Normalise a typed name: trim, collapse extra spaces, consistent capitalisation.
+// This prevents "Ha Phan", "ha phan", and "Ha  Phan" from being treated as
+// three different students.
+function normalizeName(raw) {
+  const trimmed = raw.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return '';
+  return trimmed
+    .split(' ')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
 
 async function resolveStudentId() {
-  const typed = document.getElementById('studentId').value.trim();
-  if (typed) return typed;
+  const typedRaw = document.getElementById('studentId').value;
+  const typed = normalizeName(typedRaw);
 
-  // Reuse the guest ID already assigned this session
-  if (cachedGuestId) return cachedGuestId;
+  if (typed) {
+    localStorage.setItem(STORAGE_KEY, typed);
+    return typed;
+  }
 
+  // Nothing typed — reuse a previously saved identity for this browser, if any
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored) return stored;
+
+  // First-ever visit with no typed name — get a fresh sequential guest ID
   try {
     const res = await fetch(`${SERVER_URL}/next-guest-id`);
     if (res.ok) {
       const data = await res.json();
-      cachedGuestId = data.guest_id;
-      // Reflect it in the input so the student can see their assigned ID
+      localStorage.setItem(STORAGE_KEY, data.guest_id);
       const input = document.getElementById('studentId');
-      if (input) input.placeholder = `e.g. Alice (you are ${cachedGuestId})`;
-      return cachedGuestId;
+      if (input) input.placeholder = `e.g. Alice (you are ${data.guest_id})`;
+      return data.guest_id;
     }
   } catch (err) {
-    // Server offline — fall back to a local guest label
+    // Server offline — fall back to an unsaved local label
   }
 
-  cachedGuestId = 'guest_offline';
-  return cachedGuestId;
+  return 'guest_offline';
+}
+
+// Pre-fill the name field on page load if this browser already has a saved identity.
+function restoreSavedIdentity() {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  const input = document.getElementById('studentId');
+  if (stored && input && !input.value) {
+    input.value = stored;
+  }
+}
+
+// Let a student on a shared device switch to a different identity.
+function clearSavedIdentity() {
+  localStorage.removeItem(STORAGE_KEY);
+  const input = document.getElementById('studentId');
+  if (input) {
+    input.value = '';
+    input.placeholder = 'e.g. Alice';
+  }
 }
 
 // ── Record attempt & POST ─────────────────────────────────────────────────
@@ -1036,6 +1078,16 @@ async function loadData() {
 
 // ── Init: fetch data, wait for MathJax, then start ────────────────────────
 async function init() {
+  restoreSavedIdentity();
+  updateSwitchIdentityVisibility();
+
+  document.getElementById('switchIdentityLink')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    clearSavedIdentity();
+    updateSwitchIdentityVisibility();
+  });
+  document.getElementById('studentId')?.addEventListener('input', updateSwitchIdentityVisibility);
+
   const loaded = await loadData();
   if (!loaded) return;
 
@@ -1047,6 +1099,14 @@ async function init() {
     document.getElementById('MathJax-script').addEventListener('load', () => {
       MathJax.startup.promise.then(() => loadNextProblem());
     });
+  }
+}
+
+function updateSwitchIdentityVisibility() {
+  const row = document.getElementById('switchIdentityRow');
+  const input = document.getElementById('studentId');
+  if (row && input) {
+    row.style.display = input.value.trim() ? 'block' : 'none';
   }
 }
 
