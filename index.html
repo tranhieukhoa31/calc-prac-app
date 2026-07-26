@@ -643,14 +643,55 @@ function updateTimer() {
 }
 
 // ── Load next problem ─────────────────────────────────────────────────────
-function loadNextProblem() {
-  currentProblem = pickProblem();
+// If the student hasn't manually narrowed to a specific topic/difficulty,
+// ask the server for a BKT-driven recommendation. If they HAVE picked a
+// specific topic or difficulty, respect that choice and pick locally from
+// the filtered pool instead — manual browsing always overrides the
+// recommender.
+let lastRecommendation = null;  // stores target_topic/difficulty for display, if used
+
+async function loadNextProblem() {
   hintsShown    = 0;
   answered      = false;
   showingAnswer = false;
   stopTimer();
+  lastRecommendation = null;
+
+  const usingManualFilter = (selectedTopic !== 'all' || selectedDiff > 0);
+
+  if (!usingManualFilter) {
+    currentProblem = await fetchRecommendedProblem();
+  }
+
+  // Fall back to local random pick if: manual filter is active, OR the
+  // recommendation call failed/returned nothing (e.g. server offline).
+  if (!currentProblem) {
+    currentProblem = pickProblem();
+  }
+
   render();
   if (currentProblem) startTimer();
+}
+
+// Ask the server for a BKT-recommended problem for the current student.
+// Returns null on any failure so the caller can fall back gracefully.
+async function fetchRecommendedProblem() {
+  try {
+    const studentId = await resolveStudentId();
+    const res = await fetch(`${SERVER_URL}/recommend/${encodeURIComponent(studentId)}`);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (!data.problem) return null;
+
+    lastRecommendation = {
+      target_topic:      data.target_topic,
+      target_difficulty: data.target_difficulty
+    };
+    return data.problem;
+  } catch (err) {
+    return null;  // server offline or network issue — caller falls back
+  }
 }
 
 // ── Render ────────────────────────────────────────────────────────────────
@@ -698,6 +739,7 @@ function render() {
         <div class="card-meta">
           <span class="topic-label">${topicLabel}</span>
           <span class="diff-label">Difficulty ${p.difficulty}/4</span>
+          ${lastRecommendation ? '<span class="diff-label" style="color:var(--accent)">· Recommended for you</span>' : ''}
           <span class="problem-id">${p.problem_id}</span>
         </div>
 
