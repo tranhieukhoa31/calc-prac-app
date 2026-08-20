@@ -656,15 +656,27 @@ async function loadNextProblem() {
   showingAnswer = false;
   stopTimer();
   lastRecommendation = null;
+  currentProblem = null;   // always clear first — otherwise a manual topic
+                            // click would silently keep the OLD problem,
+                            // since it skips the block below that reassigns it
 
-  const usingManualFilter = (selectedTopic !== 'all' || selectedDiff > 0);
+  // A difficulty filter has no BKT equivalent (the recommender always
+  // computes its own target difficulty from mastery, it can't be told
+  // "only difficulty 3"), so that case still falls back to local random
+  // pick. But a TOPIC selection on its own is now passed straight through
+  // to the real recommender via ?topic=, so picking a topic still gives a
+  // genuine personalized recommendation scoped to that topic — not just a
+  // random problem from it.
+  const usingDiffFilter = (selectedDiff > 0);
 
-  if (!usingManualFilter) {
-    currentProblem = await fetchRecommendedProblem();
+  if (!usingDiffFilter) {
+    const topicOverride = (selectedTopic !== 'all') ? selectedTopic : null;
+    currentProblem = await fetchRecommendedProblem(topicOverride);
   }
 
-  // Fall back to local random pick if: manual filter is active, OR the
-  // recommendation call failed/returned nothing (e.g. server offline).
+  // Fall back to local random pick if: a difficulty filter is active, OR
+  // the recommendation call failed/returned nothing (e.g. server offline,
+  // or no problems left in that topic).
   if (!currentProblem) {
     currentProblem = pickProblem();
   }
@@ -674,11 +686,17 @@ async function loadNextProblem() {
 }
 
 // Ask the server for a BKT-recommended problem for the current student.
+// topicOverride: when set, restricts the recommendation to that single
+// topic (passed to the backend as ?topic=...) instead of letting the
+// recommender pick the topic itself.
 // Returns null on any failure so the caller can fall back gracefully.
-async function fetchRecommendedProblem() {
+async function fetchRecommendedProblem(topicOverride) {
   try {
     const studentId = await resolveStudentId();
-    const res = await fetch(`${SERVER_URL}/recommend/${encodeURIComponent(studentId)}`);
+    let url = `${SERVER_URL}/recommend/${encodeURIComponent(studentId)}`;
+    if (topicOverride) url += `?topic=${encodeURIComponent(topicOverride)}`;
+
+    const res = await fetch(url);
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -720,7 +738,8 @@ function render() {
       </button>
       <button class="btn" id="showAnswerBtn">Show answer</button>
       <button class="btn btn-incorrect" id="incorrectBtn">Incorrect</button>
-      <button class="btn btn-correct"   id="correctBtn">Correct</button>`;
+      <button class="btn btn-correct"   id="correctBtn">Correct</button>
+      <button class="btn" id="anotherBtn" style="margin-left:auto;">Another question</button>`;
   } else {
     actionsHtml = `
       <button class="btn" id="showAnswerBtn">${showingAnswer ? 'Hide answer' : 'Show answer'}</button>
@@ -765,6 +784,7 @@ function render() {
   document.getElementById('incorrectBtn')?.addEventListener('click', () => recordAttempt(false));
   document.getElementById('nextBtn')?.addEventListener('click', loadNextProblem);
   document.getElementById('showAnswerBtn')?.addEventListener('click', toggleAnswer);
+  document.getElementById('anotherBtn')?.addEventListener('click', loadNextProblem);
 
   renderLog();
 
