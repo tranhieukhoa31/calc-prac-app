@@ -611,8 +611,15 @@ function getPool() {
   return pool;
 }
 
-function pickProblem() {
-  const pool = getPool();
+function pickProblem(excludeId) {
+  let pool = getPool();
+  // Exclude the just-shown problem when there's another option — but if
+  // it's the ONLY problem in the pool, keep it rather than returning
+  // nothing (a lone problem in a thin topic is still better than no
+  // problem at all).
+  if (excludeId && pool.length > 1) {
+    pool = pool.filter(p => p.problem_id !== excludeId);
+  }
   if (!pool.length) return null;
   const attCounts = {};
   attempts.forEach(a => { attCounts[a.problem_id] = (attCounts[a.problem_id] || 0) + 1; });
@@ -651,6 +658,14 @@ function updateTimer() {
 let lastRecommendation = null;  // stores target_topic/difficulty for display, if used
 
 async function loadNextProblem() {
+  // Capture what's currently shown BEFORE clearing it, so we can explicitly
+  // exclude it from the next fetch. Without this, calling /recommend again
+  // with no new attempt in between is a pure function of unchanged state —
+  // it deterministically returns the SAME problem every time. This is what
+  // actually makes a "skip" (Another question button, or clicking a topic
+  // that's already the target) behave like a skip instead of a no-op.
+  const previousProblemId = currentProblem ? currentProblem.problem_id : null;
+
   hintsShown    = 0;
   answered      = false;
   showingAnswer = false;
@@ -671,14 +686,14 @@ async function loadNextProblem() {
 
   if (!usingDiffFilter) {
     const topicOverride = (selectedTopic !== 'all') ? selectedTopic : null;
-    currentProblem = await fetchRecommendedProblem(topicOverride);
+    currentProblem = await fetchRecommendedProblem(topicOverride, previousProblemId);
   }
 
   // Fall back to local random pick if: a difficulty filter is active, OR
   // the recommendation call failed/returned nothing (e.g. server offline,
   // or no problems left in that topic).
   if (!currentProblem) {
-    currentProblem = pickProblem();
+    currentProblem = pickProblem(previousProblemId);
   }
 
   render();
@@ -689,12 +704,18 @@ async function loadNextProblem() {
 // topicOverride: when set, restricts the recommendation to that single
 // topic (passed to the backend as ?topic=...) instead of letting the
 // recommender pick the topic itself.
+// excludeId: when set, tells the backend not to re-serve this specific
+// problem_id for this call (without marking it attempted) — needed so a
+// repeated call with unchanged mastery doesn't just return the same problem.
 // Returns null on any failure so the caller can fall back gracefully.
-async function fetchRecommendedProblem(topicOverride) {
+async function fetchRecommendedProblem(topicOverride, excludeId) {
   try {
     const studentId = await resolveStudentId();
     let url = `${SERVER_URL}/recommend/${encodeURIComponent(studentId)}`;
-    if (topicOverride) url += `?topic=${encodeURIComponent(topicOverride)}`;
+    const params = [];
+    if (topicOverride) params.push(`topic=${encodeURIComponent(topicOverride)}`);
+    if (excludeId)     params.push(`exclude=${encodeURIComponent(excludeId)}`);
+    if (params.length) url += `?${params.join('&')}`;
 
     const res = await fetch(url);
     if (!res.ok) return null;
