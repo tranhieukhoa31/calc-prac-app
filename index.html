@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Ask browsers to re-check for a newer copy of this page instead of reusing a stale one -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Calculus Practice</title>
 
 <script>
@@ -260,7 +264,7 @@ body {
 
 /* Forces this button onto its own row, flush-left with the buttons above,
    without adding an extra flex line (which would double the row gap). */
-.btn-another { color: var(--ink3); margin-right: 100%; }
+.btn-another { color: var(--ink3); margin-right: 100%; flex: 0 0 auto; white-space: nowrap; }
 
 .btn-next {
   margin-left: auto;
