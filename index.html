@@ -258,6 +258,10 @@ body {
 .btn-incorrect { border-color: var(--incorrect); color: var(--incorrect); }
 .btn-incorrect:hover:not(:disabled) { background: var(--incorrect); color: white; }
 
+/* Forces this button onto its own row, flush-left with the buttons above,
+   without adding an extra flex line (which would double the row gap). */
+.btn-another { color: var(--ink3); margin-right: 100%; }
+
 .btn-next {
   margin-left: auto;
   background: var(--accent); border-color: var(--accent); color: white;
@@ -372,6 +376,7 @@ body {
     min-height: 44px;
   }
   .action-row { gap: 10px; }
+  .btn-another { margin-right: 0; }  /* buttons already flex to fill rows on phones */
   .action-row .btn { flex: 1 1 auto; min-width: 42%; }
   .btn-next { flex: 1 1 100%; }
 
@@ -405,7 +410,7 @@ body {
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <h1>Calculus Practice</h1>
-      <p>Secondary 4 &middot; 62 problems</p>
+      <p id="sidebarSubtitle">Secondary 4</p>
     </div>
 
     <div class="student-bar">
@@ -656,6 +661,11 @@ function updateTimer() {
 // the filtered pool instead — manual browsing always overrides the
 // recommender.
 let lastRecommendation = null;  // stores target_topic/difficulty for display, if used
+// Problems the student has skipped (Another question / switching away) since their
+// last real attempt. /recommend is deterministic until a new attempt is recorded, so
+// excluding only the *current* problem makes skipping ping-pong between two problems;
+// excluding everything skipped lets it walk through the whole pool instead.
+let skippedIds = new Set();
 
 async function loadNextProblem() {
   // Capture what's currently shown BEFORE clearing it, so we can explicitly
@@ -665,6 +675,15 @@ async function loadNextProblem() {
   // actually makes a "skip" (Another question button, or clicking a topic
   // that's already the target) behave like a skip instead of a no-op.
   const previousProblemId = currentProblem ? currentProblem.problem_id : null;
+
+  // A recorded attempt changes the student's mastery, so the recommender's output
+  // changes on its own and old skips no longer need excluding. Otherwise the
+  // student is skipping this problem: remember it.
+  if (answered) {
+    skippedIds.clear();
+  } else if (previousProblemId) {
+    skippedIds.add(previousProblemId);
+  }
 
   hintsShown    = 0;
   answered      = false;
@@ -686,7 +705,13 @@ async function loadNextProblem() {
 
   if (!usingDiffFilter) {
     const topicOverride = (selectedTopic !== 'all') ? selectedTopic : null;
-    currentProblem = await fetchRecommendedProblem(topicOverride, previousProblemId);
+    currentProblem = await fetchRecommendedProblem(topicOverride, [...skippedIds]);
+    if (!currentProblem && skippedIds.size > 1) {
+      // Everything available has been skipped: start the cycle again, keeping
+      // only the problem just shown so it isn't served twice in a row.
+      skippedIds = new Set(previousProblemId ? [previousProblemId] : []);
+      currentProblem = await fetchRecommendedProblem(topicOverride, [...skippedIds]);
+    }
   }
 
   // Fall back to local random pick if: a difficulty filter is active, OR
@@ -704,17 +729,17 @@ async function loadNextProblem() {
 // topicOverride: when set, restricts the recommendation to that single
 // topic (passed to the backend as ?topic=...) instead of letting the
 // recommender pick the topic itself.
-// excludeId: when set, tells the backend not to re-serve this specific
-// problem_id for this call (without marking it attempted) — needed so a
-// repeated call with unchanged mastery doesn't just return the same problem.
+// excludeIds: array of problem_ids the backend must not re-serve for this call
+// (without marking them attempted) — needed so a repeated call with unchanged
+// mastery doesn't just return the same problem.
 // Returns null on any failure so the caller can fall back gracefully.
-async function fetchRecommendedProblem(topicOverride, excludeId) {
+async function fetchRecommendedProblem(topicOverride, excludeIds) {
   try {
     const studentId = await resolveStudentId();
     let url = `${SERVER_URL}/recommend/${encodeURIComponent(studentId)}`;
     const params = [];
     if (topicOverride) params.push(`topic=${encodeURIComponent(topicOverride)}`);
-    if (excludeId)     params.push(`exclude=${encodeURIComponent(excludeId)}`);
+    if (excludeIds && excludeIds.length) params.push(`exclude=${encodeURIComponent(excludeIds.join(','))}`);
     if (params.length) url += `?${params.join('&')}`;
 
     const res = await fetch(url);
@@ -745,14 +770,13 @@ function render() {
 
   const p          = currentProblem;
   const topicLabel = TOPIC_LABELS[p.topic] || p.topic;
-  const hintTexts  = [p.hint_level_1, p.hint_level_2, p.hint_level_3].filter(Boolean);
+  const hintTexts  = p.hint ? [p.hint] : [];  // single hint field now, kept as an array so the rest of the display/render logic below (built for N hints) needs no further changes
 
   // Build action buttons HTML
   let actionsHtml = '';
   if (!answered) {
     const canHint = hintsShown < hintTexts.length;
-    const remaining = hintTexts.length - hintsShown;
-    const hintLabel = canHint ? `Hint ${remaining}/${hintTexts.length}` : `0/${hintTexts.length} hints left`;
+    const hintLabel = canHint ? 'Show hint' : 'Hint shown';
     actionsHtml = `
       <button class="btn" id="hintBtn" ${!canHint ? 'disabled' : ''}>
         ${hintLabel}
@@ -760,7 +784,7 @@ function render() {
       <button class="btn" id="showAnswerBtn">Show answer</button>
       <button class="btn btn-incorrect" id="incorrectBtn">Incorrect</button>
       <button class="btn btn-correct"   id="correctBtn">Correct</button>
-      <button class="btn" id="anotherBtn" style="margin-left:auto;">Another question</button>`;
+      <button class="btn btn-another" id="anotherBtn">Another question</button>`;
   } else {
     actionsHtml = `
       <button class="btn" id="showAnswerBtn">${showingAnswer ? 'Hide answer' : 'Show answer'}</button>
@@ -834,7 +858,7 @@ function renderAllMath() {
   }
 
   // Hints
-  const hintTexts = [p.hint_level_1, p.hint_level_2, p.hint_level_3].filter(Boolean);
+  const hintTexts = p.hint ? [p.hint] : [];
   const hintsArea = document.getElementById('hintsArea');
   if (hintsArea) {
     hintsArea.innerHTML = '';
@@ -842,7 +866,7 @@ function renderAllMath() {
       const div = document.createElement('div');
       div.className = 'hint-item';
       const label = document.createElement('strong');
-      label.textContent = `Hint ${i + 1}`;
+      label.textContent = 'Hint';
       div.appendChild(label);
       div.appendChild(document.createTextNode(hintTexts[i]));
       hintsArea.appendChild(div);
@@ -908,7 +932,7 @@ function renderAllMath() {
 
 // ── Hint ──────────────────────────────────────────────────────────────────
 function showHint() {
-  const hintTexts = [currentProblem.hint_level_1, currentProblem.hint_level_2, currentProblem.hint_level_3].filter(Boolean);
+  const hintTexts = currentProblem.hint ? [currentProblem.hint] : [];
   if (hintsShown < hintTexts.length) {
     hintsShown++;
     sessionHints++;
@@ -919,7 +943,7 @@ function showHint() {
       const div = document.createElement('div');
       div.className = 'hint-item';
       const label = document.createElement('strong');
-      label.textContent = `Hint ${hintsShown}`;
+      label.textContent = 'Hint';
       div.appendChild(label);
       div.appendChild(document.createTextNode(hintTexts[hintsShown - 1]));
       hintsArea.appendChild(div);
@@ -927,12 +951,8 @@ function showHint() {
     // Update hint button
     const hintBtn = document.getElementById('hintBtn');
     if (hintBtn) {
-      const canMore = hintsShown < hintTexts.length;
-      const remaining = hintTexts.length - hintsShown;
-      hintBtn.textContent = canMore
-        ? `Hint ${remaining}/${hintTexts.length}`
-        : `0/${hintTexts.length} hints left`;
-      hintBtn.disabled = !canMore;
+      hintBtn.textContent = 'Hint shown';
+      hintBtn.disabled = true;
     }
   }
 }
@@ -1139,6 +1159,9 @@ async function loadData() {
     PROBLEMS    = await problemsRes.json();
     TOPIC_GRAPH = await topicsRes.json();
     refreshTopicLabels();
+
+    const subtitle = document.getElementById('sidebarSubtitle');
+    if (subtitle) subtitle.textContent = `Secondary 4 \u00b7 ${PROBLEMS.length} problems`;
 
     if (!PROBLEMS.length) {
       main.innerHTML = `<div class="empty-state"><p>No problems found. Check back later.</p></div>`;
